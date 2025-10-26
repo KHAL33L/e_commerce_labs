@@ -11,7 +11,16 @@ ini_set('display_errors', 1);
 
 // Define base path
 define('BASE_PATH', dirname(__DIR__));
-define('BASE_URL', 'http://' . $_SERVER['HTTP_HOST'] . '/e_commerce_labs');
+
+// Dynamically determine base URL based on server
+$scriptPath = dirname($_SERVER['SCRIPT_NAME']);
+if (strpos($scriptPath, '~') !== false) {
+    // Server with user directory (e.g., ~ibrahim.dasuki)
+    define('BASE_URL', 'http://' . $_SERVER['HTTP_HOST'] . substr($scriptPath, 0, strrpos($scriptPath, '/')));
+} else {
+    // Local development or standard installation
+    define('BASE_URL', 'http://' . $_SERVER['HTTP_HOST'] . '/e_commerce_labs');
+}
 
 // Include settings/core.php for helper functions
 require_once BASE_PATH . '/settings/core.php';

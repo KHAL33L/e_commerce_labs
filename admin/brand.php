@@ -43,6 +43,9 @@ button{background:var(--brand);color:#fff;border:none;padding:.6rem 1rem;border-
 </nav>
 
 <div class="container">
+  <div style="margin-bottom:1rem;">
+    <a href="../dashboard.php" style="text-decoration:none;color:var(--brand);font-weight:500;">← Back to Dashboard</a>
+  </div>
   <div class="card">
     <h2>Brands</h2>
     <p class="small">Brands are grouped under categories. Only your brands are shown.</p>

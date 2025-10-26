@@ -41,6 +41,9 @@ button{background:var(--brand);color:#fff;border:none;padding:.6rem 1rem;border-
 <nav><div class="brand">Sure Shop - Admin</div><div>Welcome, <?php echo htmlspecialchars($_SESSION['customer_name']); ?> | <a href="../actions/logout_action.php">Logout</a></div></nav>
 
 <div class="container">
+  <div style="margin-bottom:1rem;">
+    <a href="../dashboard.php" style="text-decoration:none;color:var(--brand);font-weight:500;">← Back to Dashboard</a>
+  </div>
   <div class="card">
     <h2>Add / Edit Product</h2>
     <form id="productForm" enctype="multipart/form-data" onsubmit="return false;">
