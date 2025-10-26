@@ -1,12 +1,10 @@
-# Allow image files to be served
-<FilesMatch "\.(jpg|jpeg|png|gif|webp)$">
-    Order allow,deny
+# Allow image files to be accessed directly
+<FilesMatch "\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$">
     Allow from all
 </FilesMatch>
 
-# Prevent execution of PHP files
-<FilesMatch "\.php$">
-    Order deny,allow
-    Deny from all
-</FilesMatch>
+# Use index.php when accessing the directory
+DirectoryIndex index.php
 
+# Disable directory browsing
+Options -Indexes
