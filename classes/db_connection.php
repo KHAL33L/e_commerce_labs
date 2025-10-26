@@ -6,11 +6,17 @@ class DBConnection {
     protected $pdo;
 
     public function __construct() {
-        $host = '127.0.0.1';
-        $db   = 'dbforlab';
-        $user = 'root';
-        $pass = ''; // <- set your password
+        $host = 'localhost';
+        $db   = 'ecommerce_2025A_ibrahim_dasuki';
+        $user = 'ibrahim.dasuki';
+        $pass = 'Delorean12!'; 
         $charset = 'utf8mb4';
+
+        // $host = '127.0.0.1';
+        // $db   = 'dbforlab';
+        // $user = 'root';
+        // $pass = ''; 
+        // $charset = 'utf8mb4';
 
         $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
         $opts = [
