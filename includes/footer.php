@@ -141,9 +141,28 @@
         });
         
         function updateCartCount() {
-            // This would be replaced with actual cart count from your session/cookie
-            // For now, we'll set it to 0
-            document.getElementById('cartCount').textContent = '0';
+            // Fetch cart count from server
+            fetch('actions/get_cart_count_action.php')
+                .then(response => response.json())
+                .then(data => {
+                    const cartCountEl = document.getElementById('cartCount');
+                    if (cartCountEl) {
+                        if (data.success && data.count > 0) {
+                            cartCountEl.textContent = data.count;
+                            cartCountEl.style.display = 'inline-block';
+                        } else {
+                            cartCountEl.textContent = '0';
+                            cartCountEl.style.display = 'none';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating cart count:', error);
+                    const cartCountEl = document.getElementById('cartCount');
+                    if (cartCountEl) {
+                        cartCountEl.textContent = '0';
+                    }
+                });
         }
     </script>
 </body>

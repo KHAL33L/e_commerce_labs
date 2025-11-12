@@ -4,23 +4,27 @@ require_once __DIR__ . '/config/init.php';
 require_once __DIR__ . '/settings/core.php';
 require_once __DIR__ . '/includes/header.php';
 
-// Check if there's a recent order
-if (!isset($_SESSION['order_id'])) {
+// Get order ID from GET parameter or session
+$order_id = isset($_GET['order_id']) ? (int)$_GET['order_id'] : (isset($_SESSION['order_id']) ? (int)$_SESSION['order_id'] : 0);
+
+if ($order_id <= 0) {
     header('Location: index.php');
     exit;
 }
 
-// The $order object is already available from init.php
-$order_details = $order->get_order($_SESSION['order_id']);
+// Initialize order controller
+$orderController = new OrderController();
+$order_result = $orderController->get_order_ctr($order_id);
 
-if (!$order_details) {
+if (!$order_result['success'] || empty($order_result['data'])) {
     // Order not found
     header('Location: index.php');
     exit;
 }
 
+$order_details = $order_result['data'];
+
 // Clear the order ID from session to prevent refresh issues
-$order_id = $_SESSION['order_id'];
 unset($_SESSION['order_id']);
 
 // Calculate order totals
@@ -28,8 +32,29 @@ $subtotal = 0;
 $tax_rate = 0.08; // Same as in checkout
 $shipping = 10.00; // Same as in checkout
 
-foreach ($order_details['items'] as $item) {
-    $subtotal += $item['price'] * $item['qty'];
+// Get order items - check if items exist in the order_details
+$order_items = $order_details['items'] ?? [];
+
+// If items are not in the expected format, fetch them separately
+if (empty($order_items)) {
+    // Try to get order details from orderdetails table
+    try {
+        $stmt = $pdo->prepare("
+            SELECT od.*, p.title as product_name, p.image_path as image_url
+            FROM orderdetails od
+            JOIN product p ON od.product_id = p.id
+            WHERE od.order_id = :order_id
+        ");
+        $stmt->execute([':order_id' => $order_id]);
+        $order_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error fetching order items: " . $e->getMessage());
+        $order_items = [];
+    }
+}
+
+foreach ($order_items as $item) {
+    $subtotal += (float)($item['price'] ?? 0) * (int)($item['qty'] ?? 0);
 }
 
 $tax = $subtotal * $tax_rate;
@@ -51,8 +76,8 @@ $total = $subtotal + $shipping + $tax;
                         
                         <div class="bg-light p-4 rounded d-inline-block" style="max-width: 500px;">
                             <p class="mb-2">Order Number:</p>
-                            <h4 class="mb-0"><?= htmlspecialchars($order_details['invoice_no']) ?></h4>
-                            <p class="small text-muted mb-0"><?= date('F j, Y', strtotime($order_details['order_date'])) ?></p>
+                            <h4 class="mb-0"><?= htmlspecialchars($order_details['invoice_no'] ?? 'N/A') ?></h4>
+                            <p class="small text-muted mb-0"><?= isset($order_details['order_date']) ? date('F j, Y', strtotime($order_details['order_date'])) : date('F j, Y') ?></p>
                         </div>
                     </div>
                     
@@ -62,7 +87,7 @@ $total = $subtotal + $shipping + $tax;
                                 <i class="fas fa-info-circle fa-2x"></i>
                             </div>
                             <div>
-                                <p class="mb-1">We've sent an email with your order confirmation and details to <strong><?= htmlspecialchars($order_details['email']) ?></strong>.</p>
+                                    <p class="mb-1">We've sent an email with your order confirmation and details<?= isset($order_details['email']) ? ' to <strong>' . htmlspecialchars($order_details['email']) . '</strong>' : '' ?>.</p>
                                 <p class="mb-0">You'll receive a shipping confirmation email when your order is on its way.</p>
                             </div>
                         </div>
@@ -75,14 +100,14 @@ $total = $subtotal + $shipping + $tax;
                                     <h5 class="mb-0">Order Details</h5>
                                 </div>
                                 <div class="card-body">
-                                    <p class="mb-2"><strong>Order Number:</strong> <span class="text-muted"><?= htmlspecialchars($order_details['invoice_no']) ?></span></p>
-                                    <p class="mb-2"><strong>Date:</strong> <span class="text-muted"><?= date('F j, Y', strtotime($order_details['order_date'])) ?></span></p>
+                                    <p class="mb-2"><strong>Order Number:</strong> <span class="text-muted"><?= htmlspecialchars($order_details['invoice_no'] ?? 'N/A') ?></span></p>
+                                    <p class="mb-2"><strong>Date:</strong> <span class="text-muted"><?= isset($order_details['order_date']) ? date('F j, Y', strtotime($order_details['order_date'])) : date('F j, Y') ?></span></p>
                                     <p class="mb-2"><strong>Status:</strong> 
                                         <span class="badge bg-<?= 
-                                            $order_details['order_status'] === 'completed' ? 'success' : 
-                                            ($order_details['order_status'] === 'processing' ? 'primary' : 'warning') 
+                                            ($order_details['order_status'] ?? 'pending') === 'completed' ? 'success' : 
+                                            (($order_details['order_status'] ?? 'pending') === 'processing' ? 'primary' : 'warning') 
                                         ?>">
-                                            <?= ucfirst($order_details['order_status']) ?>
+                                            <?= ucfirst($order_details['order_status'] ?? 'pending') ?>
                                         </span>
                                     </p>
                                     <p class="mb-0"><strong>Total:</strong> <span class="text-muted">₦<?= number_format($total, 2) ?></span></p>
@@ -96,10 +121,18 @@ $total = $subtotal + $shipping + $tax;
                                     <h5 class="mb-0">Shipping Address</h5>
                                 </div>
                                 <div class="card-body">
-                                    <p class="mb-1"><?= htmlspecialchars($order_details['first_name'] . ' ' . $order_details['last_name']) ?></p>
-                                    <p class="mb-1"><?= htmlspecialchars($order_details['address']) ?></p>
-                                    <p class="mb-1"><?= htmlspecialchars($order_details['city'] . ', ' . $order_details['state'] . ' ' . $order_details['zip_code']) ?></p>
-                                    <p class="mb-0"><?= htmlspecialchars($order_details['country']) ?></p>
+                                    <?php if (isset($order_details['first_name']) || isset($order_details['last_name'])): ?>
+                                        <p class="mb-1"><?= htmlspecialchars(($order_details['first_name'] ?? '') . ' ' . ($order_details['last_name'] ?? '')) ?></p>
+                                    <?php endif; ?>
+                                    <?php if (isset($order_details['address'])): ?>
+                                        <p class="mb-1"><?= htmlspecialchars($order_details['address']) ?></p>
+                                    <?php endif; ?>
+                                    <?php if (isset($order_details['city']) || isset($order_details['state']) || isset($order_details['zip_code'])): ?>
+                                        <p class="mb-1"><?= htmlspecialchars(($order_details['city'] ?? '') . ', ' . ($order_details['state'] ?? '') . ' ' . ($order_details['zip_code'] ?? '')) ?></p>
+                                    <?php endif; ?>
+                                    <?php if (isset($order_details['country'])): ?>
+                                        <p class="mb-0"><?= htmlspecialchars($order_details['country']) ?></p>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -120,22 +153,22 @@ $total = $subtotal + $shipping + $tax;
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($order_details['items'] as $item): ?>
+                                    <?php foreach ($order_items as $item): ?>
                                         <tr>
                                             <td>
                                                 <div class="d-flex align-items-center">
-                                                    <img src="<?= htmlspecialchars($item['image_url'] ?? 'assets/images/placeholder.jpg') ?>" 
-                                                         alt="<?= htmlspecialchars($item['product_name']) ?>" 
+                                                    <img src="<?= htmlspecialchars($item['image_url'] ?? $item['image_path'] ?? 'assets/images/placeholder.jpg') ?>" 
+                                                         alt="<?= htmlspecialchars($item['product_name'] ?? 'Product') ?>" 
                                                          style="width: 50px; height: 50px; object-fit: cover; margin-right: 1rem;">
                                                     <div>
-                                                        <h6 class="mb-0"><?= htmlspecialchars($item['product_name']) ?></h6>
-                                                        <small class="text-muted">SKU: <?= $item['product_id'] ?></small>
+                                                        <h6 class="mb-0"><?= htmlspecialchars($item['product_name'] ?? 'Product') ?></h6>
+                                                        <small class="text-muted">Product ID: <?= $item['product_id'] ?? 'N/A' ?></small>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td class="text-end">₦<?= number_format($item['price'], 2) ?></td>
-                                            <td class="text-center"><?= $item['qty'] ?></td>
-                                            <td class="text-end">₦<?= number_format($item['price'] * $item['qty'], 2) ?></td>
+                                            <td class="text-end">₦<?= number_format((float)($item['price'] ?? 0), 2) ?></td>
+                                            <td class="text-center"><?= $item['qty'] ?? 0 ?></td>
+                                            <td class="text-end">₦<?= number_format((float)($item['price'] ?? 0) * (int)($item['qty'] ?? 0), 2) ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>

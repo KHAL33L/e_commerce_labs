@@ -4,84 +4,35 @@ require_once __DIR__ . '/config/init.php';
 require_once __DIR__ . '/settings/core.php';
 require_once __DIR__ . '/includes/header.php';
 
+// Get customer ID and IP address
+$customer_id = $_SESSION['customer_id'] ?? 0;
+$ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+
+// Initialize cart controller
+$cartController = new CartController();
+
+// Get cart items from database
+$cart_result = $cartController->get_user_cart_ctr($customer_id, $ip_address);
+$cart_items = $cart_result['items'] ?? [];
+
 // Check if cart is empty
-if (empty($_SESSION['cart'] ?? [])) {
+if (empty($cart_items)) {
     $_SESSION['flash_message'] = 'Your cart is empty. Please add items before checking out.';
     $_SESSION['flash_type'] = 'warning';
     header('Location: cart.php');
     exit;
 }
 
-// Initialize order class (Order class is already initialized in init.php as $order)
-// $order variable is available from config/init.php
-
 // Calculate order totals
 $subtotal = 0;
-$shipping = 10.00; // Example shipping cost
-$tax_rate = 0.08; // Example tax rate (8%)
-
-foreach ($_SESSION['cart'] as $item) {
+foreach ($cart_items as $item) {
     $subtotal += $item['price'] * $item['quantity'];
 }
 
+$shipping = 10.00; // Example shipping cost
+$tax_rate = 0.08; // Example tax rate (8%)
 $tax = $subtotal * $tax_rate;
 $total = $subtotal + $shipping + $tax;
-
-// Process form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Validate form data
-    $required_fields = [
-        'first_name', 'last_name', 'email', 'phone',
-        'address', 'city', 'state', 'zip', 'country'
-    ];
-    
-    $errors = [];
-    foreach ($required_fields as $field) {
-        if (empty($_POST[$field])) {
-            $errors[] = ucfirst(str_replace('_', ' ', $field)) . ' is required';
-        }
-    }
-    
-    if (empty($errors)) {
-        // Prepare order data
-        $customer_id = $_SESSION['user_id'] ?? 0; // 0 for guest checkout
-        
-        $shipping_info = [
-            'first_name' => $_POST['first_name'],
-            'last_name' => $_POST['last_name'],
-            'email' => $_POST['email'],
-            'phone' => $_POST['phone'],
-            'address' => $_POST['address'],
-            'city' => $_POST['city'],
-            'state' => $_POST['state'],
-            'zip' => $_POST['zip'],
-            'country' => $_POST['country']
-        ];
-        
-        // Create order
-        $result = $order->create_order($customer_id, $_SESSION['cart'], $shipping_info);
-        
-        if ($result['success']) {
-            // Clear the cart
-            unset($_SESSION['cart']);
-            
-            // Store order info in session for confirmation
-            $_SESSION['order_number'] = $result['invoice_no'];
-            $_SESSION['order_id'] = $result['order_id'];
-            $_SESSION['order_total'] = $total;
-            
-            // Redirect to confirmation
-            header('Location: order_confirmation.php');
-            exit;
-        } else {
-            $errors[] = 'Failed to create order: ' . ($result['message'] ?? 'Unknown error');
-        }
-    }
-    
-    // If we get here, there were errors
-    $_SESSION['flash_message'] = implode('<br>', $errors);
-    $_SESSION['flash_type'] = 'danger';
-}
 ?>
 
 <div class="container my-5">
@@ -254,15 +205,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <div class="table-responsive">
                                     <table class="table">
                                         <tbody>
-                                            <?php foreach ($_SESSION['cart'] as $item): ?>
+                                            <?php foreach ($cart_items as $item): ?>
                                                 <tr>
                                                     <td>
                                                         <div class="d-flex align-items-center">
-                                                            <img src="<?= htmlspecialchars($item['image'] ?? 'assets/images/placeholder.jpg') ?>" 
-                                                                 alt="<?= htmlspecialchars($item['name']) ?>" 
+                                                            <img src="<?= htmlspecialchars($item['image_path']) ?>" 
+                                                                 alt="<?= htmlspecialchars($item['title']) ?>" 
                                                                  style="width: 50px; height: 50px; object-fit: cover; margin-right: 10px;">
                                                             <div>
-                                                                <h6 class="mb-0"><?= htmlspecialchars($item['name']) ?></h6>
+                                                                <h6 class="mb-0"><?= htmlspecialchars($item['title']) ?></h6>
                                                                 <small class="text-muted">Qty: <?= $item['quantity'] ?></small>
                                                             </div>
                                                         </div>
@@ -274,19 +225,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <tfoot>
                                             <tr>
                                                 <th>Subtotal</th>
-                                                <td class="text-end">₦<?= number_format($subtotal, 2) ?></td>
+                                                <td class="text-end" data-subtotal="<?= $subtotal ?>">₦<?= number_format($subtotal, 2) ?></td>
                                             </tr>
                                             <tr>
                                                 <th>Shipping</th>
-                                                <td class="text-end">₦<?= number_format($shipping, 2) ?></td>
+                                                <td class="text-end" data-shipping="<?= $shipping ?>">₦<?= number_format($shipping, 2) ?></td>
                                             </tr>
                                             <tr>
                                                 <th>Tax (<?= ($tax_rate * 100) ?>%)</th>
-                                                <td class="text-end">₦<?= number_format($tax, 2) ?></td>
+                                                <td class="text-end" data-tax="<?= $tax ?>">₦<?= number_format($tax, 2) ?></td>
                                             </tr>
                                             <tr class="fw-bold">
                                                 <th>Total</th>
-                                                <td class="text-end">₦<?= number_format($total, 2) ?></td>
+                                                <td class="text-end" data-total="<?= $total ?>">₦<?= number_format($total, 2) ?></td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -354,16 +305,8 @@ document.getElementById('cardCvv').addEventListener('input', function(e) {
     e.target.value = e.target.value.replace(/\D/g, '').substring(0, 4);
 });
 
-// Handle form submission
-document.getElementById('checkoutForm').addEventListener('submit', function(e) {
-    const submitBtn = document.getElementById('placeOrderBtn');
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Processing...';
-    
-    // In a real application, you would validate the form and process the payment here
-    // For this example, we'll just submit the form
-    return true;
-});
+// Note: Form submission is now handled by checkout.js
 </script>
+<script src="js/checkout.js"></script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

@@ -34,12 +34,15 @@ require_once BASE_PATH . '/classes/order_class.php';
 require_once BASE_PATH . '/classes/product_class.php';
 require_once BASE_PATH . '/classes/brand_class.php';
 require_once BASE_PATH . '/classes/category_class.php';
+require_once BASE_PATH . '/classes/cart_class.php';
 
 // Include all controller files
 require_once BASE_PATH . '/controllers/customer_controller.php';
 require_once BASE_PATH . '/controllers/product_controller.php';
 require_once BASE_PATH . '/controllers/brand_controller.php';
 require_once BASE_PATH . '/controllers/category_controller.php';
+require_once BASE_PATH . '/controllers/cart_controller.php';
+require_once BASE_PATH . '/controllers/order_controller.php';
 
 // Initialize classes
 $database = new DBConnection();
