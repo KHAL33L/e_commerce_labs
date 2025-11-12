@@ -2,7 +2,6 @@
 // checkout.php
 require_once __DIR__ . '/config/init.php';
 require_once __DIR__ . '/settings/core.php';
-require_once __DIR__ . '/includes/header.php';
 
 // Get customer ID and IP address
 $customer_id = $_SESSION['customer_id'] ?? 0;
@@ -33,6 +32,8 @@ $shipping = 10.00; // Example shipping cost
 $tax_rate = 0.08; // Example tax rate (8%)
 $tax = $subtotal * $tax_rate;
 $total = $subtotal + $shipping + $tax;
+
+require_once __DIR__ . '/includes/header.php';
 ?>
 
 <div class="container my-5">

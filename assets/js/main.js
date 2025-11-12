@@ -18,8 +18,17 @@ function addToCart(productId, quantity = 1) {
                 const cartCountEl = document.getElementById('cartCount');
                 if (cartCountEl) {
                     cartCountEl.textContent = data.cart_count;
+                    if (data.cart_count > 0) {
+                        cartCountEl.style.display = 'inline-block';
+                    } else {
+                        cartCountEl.style.display = 'none';
+                    }
                 }
             }
+
+            // Update mini cart
+            refreshMiniCart(data.items || [], data.subtotal ?? 0);
+
             return { success: true, data: data };
         } else {
             console.error('Cart error:', data.message);
@@ -30,6 +39,41 @@ function addToCart(productId, quantity = 1) {
         console.error('Network error:', error);
         return { success: false, message: 'Network error occurred' };
     });
+}
+
+function refreshMiniCart(items, subtotal) {
+    const container = document.getElementById('cartItems');
+    const subtotalEl = document.getElementById('cartSubtotal');
+
+    if (!container) return;
+
+    if (!items || items.length === 0) {
+        container.innerHTML = '<p class="text-muted small mb-0">Your cart is empty</p>';
+        if (subtotalEl) subtotalEl.textContent = '₦0.00';
+        return;
+    }
+
+    const formatter = new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    container.innerHTML = items.map(item => {
+        const image = item.image_path || 'assets/images/placeholder.jpg';
+        const price = formatter.format(item.price ?? 0);
+        const qty = item.quantity ?? 0;
+
+        return `
+            <div class="cart-item">
+                <img src="${image}" alt="${item.title}" class="cart-item-img">
+                <div class="cart-item-details">
+                    <div class="cart-item-title">${item.title}</div>
+                    <div class="small text-muted">₦${price} × ${qty}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (subtotalEl) {
+        subtotalEl.textContent = `₦${formatter.format(subtotal ?? 0)}`;
+    }
 }
 
 // Initialize cart functionality when DOM is loaded

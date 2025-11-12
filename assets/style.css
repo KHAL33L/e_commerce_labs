@@ -52,6 +52,10 @@ a:hover {
     padding: 0.5rem 1rem !important;
 }
 
+.navbar .dropdown-menu {
+    z-index: 1050;
+}
+
 /* Product Cards */
 .product-card {
     transition: transform 0.3s ease, box-shadow 0.3s ease;

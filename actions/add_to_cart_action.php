@@ -32,23 +32,26 @@ try {
         $cart_count = $cartController->get_cart_count_ctr($customer_id, $ip_address);
         $result['cart_count'] = $cart_count;
         
-        // Also update session cart for backward compatibility
-        if (!isset($_SESSION['cart'])) {
+        // Refresh session cart from database for immediate UI feedback
+        $cart_data = $cartController->get_user_cart_ctr($customer_id, $ip_address);
+        if (!empty($cart_data['success'])) {
+            $result['items'] = $cart_data['items'];
+            
+            $subtotal = 0;
+            foreach ($cart_data['items'] as $item) {
+                $subtotal += ((float)$item['price']) * ((int)$item['quantity']);
+            }
+            $result['subtotal'] = $subtotal;
+            
             $_SESSION['cart'] = [];
-        }
-        
-        // Get product details for session
-        $productController = new ProductController();
-        $product_result = $productController->get_single_product_ctr($product_id);
-        
-        if ($product_result['success'] && !empty($product_result['data'])) {
-            $product = $product_result['data'];
-            $_SESSION['cart'][$product_id] = [
-                'name' => $product['title'],
-                'price' => $product['price'],
-                'quantity' => $quantity,
-                'image' => $product['image_path'] ?? 'assets/images/placeholder.jpg'
-            ];
+            foreach ($cart_data['items'] as $item) {
+                $_SESSION['cart'][$item['product_id']] = [
+                    'name' => $item['title'],
+                    'price' => $item['price'],
+                    'quantity' => $item['quantity'],
+                    'image' => $item['image_path'] ?? 'assets/images/placeholder.jpg'
+                ];
+            }
         }
     }
     

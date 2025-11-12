@@ -5,6 +5,30 @@ require_once __DIR__ . '/../settings/core.php';
 
 // Get flash message if exists
 $flash = get_flash_message();
+
+// Preload cart details for header mini-cart
+$customer_id = $_SESSION['customer_id'] ?? 0;
+$ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+$initial_cart_count = 0;
+$initial_cart_items = [];
+$initial_cart_subtotal = 0.00;
+
+if (class_exists('CartController')) {
+    try {
+        $cartController = new CartController();
+        $cart_data = $cartController->get_user_cart_ctr($customer_id, $ip_address);
+        if (!empty($cart_data['success']) && !empty($cart_data['items'])) {
+            $initial_cart_items = $cart_data['items'];
+            foreach ($initial_cart_items as $item) {
+                $qty = (int)($item['quantity'] ?? 0);
+                $initial_cart_count += $qty;
+                $initial_cart_subtotal += ((float)($item['price'] ?? 0)) * $qty;
+            }
+        }
+    } catch (Exception $e) {
+        error_log('Header cart count error: ' . $e->getMessage());
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -136,19 +160,35 @@ $flash = get_flash_message();
                     <div class="dropdown">
                         <a href="#" class="text-dark position-relative" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-shopping-cart fa-lg"></i>
-                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill" id="cartCount" style="background-color: #660a38;">
-                                0
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill" id="cartCount" style="background-color: #660a38;<?= $initial_cart_count > 0 ? '' : ' display:none;' ?>">
+                                <?= $initial_cart_count ?>
                             </span>
                         </a>
                         <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 320px;">
                             <h6 class="dropdown-header">Shopping Cart</h6>
                             <div id="cartItems">
-                                <p class="text-muted small mb-0">Your cart is empty</p>
+                                <?php if (!empty($initial_cart_items)): ?>
+                                    <?php foreach ($initial_cart_items as $miniItem): ?>
+                                        <div class="cart-item">
+                                            <img src="<?= htmlspecialchars($miniItem['image_path'] ?? 'assets/images/placeholder.jpg') ?>"
+                                                 alt="<?= htmlspecialchars($miniItem['title']) ?>"
+                                                 class="cart-item-img">
+                                            <div class="cart-item-details">
+                                                <div class="cart-item-title"><?= htmlspecialchars($miniItem['title']) ?></div>
+                                                <div class="small text-muted">
+                                                    ₦<?= number_format($miniItem['price'], 2) ?> × <?= (int)$miniItem['quantity'] ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <p class="text-muted small mb-0">Your cart is empty</p>
+                                <?php endif; ?>
                             </div>
                             <div class="dropdown-divider"></div>
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span class="fw-bold">Subtotal:</span>
-                                                                        <span class="fw-bold" id="cartSubtotal">₦0.00</span>
+                                <span class="fw-bold" id="cartSubtotal">₦<?= number_format($initial_cart_subtotal, 2) ?></span>
                             </div>
                             <div class="d-grid gap-2">
                                 <a href="cart.php" class="btn btn-sm" style="background-color: #660a38; color: white; border: none;">View Cart</a>

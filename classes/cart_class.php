@@ -9,6 +9,70 @@ class Cart extends DBConnection {
         parent::__construct();
         $this->pdo = $this->getPDO();
     }
+
+    /**
+     * Fetch product details from either the new product table or the legacy products table.
+     */
+    private function getProductDetails(int $product_id): ?array {
+        // Try new product table first
+        $stmt = $this->pdo->prepare("
+            SELECT id AS product_id, title, price, image_path, description 
+            FROM product 
+            WHERE id = :id 
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $product_id]);
+        $product = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($product) {
+            return [
+                'product_id' => (int)$product['product_id'],
+                'title' => $product['title'],
+                'price' => (float)$product['price'],
+                'image_path' => $product['image_path'],
+                'description' => $product['description'] ?? ''
+            ];
+        }
+
+        // Fallback to legacy products table
+        $stmt = $this->pdo->prepare("
+            SELECT product_id, product_title, product_price, product_image, product_desc 
+            FROM products 
+            WHERE product_id = :id 
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $product_id]);
+        $legacy = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($legacy) {
+            return [
+                'product_id' => (int)$legacy['product_id'],
+                'title' => $legacy['product_title'],
+                'price' => (float)$legacy['product_price'],
+                'image_path' => $legacy['product_image'],
+                'description' => $legacy['product_desc'] ?? ''
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Determine the appropriate WHERE clause and parameters for cart queries
+     */
+    private function getCartFilter(int $customer_id, string $ip_address, string $alias = 'c'): array {
+        if ($customer_id > 0) {
+            return [
+                'clause' => "$alias.c_id = :cid",
+                'params' => [':cid' => $customer_id]
+            ];
+        }
+
+        return [
+            'clause' => "$alias.c_id = 0 AND $alias.ip_add = :ip",
+            'params' => [':ip' => $ip_address]
+        ];
+    }
     
     /**
      * Add a product to the cart
@@ -99,33 +163,37 @@ class Cart extends DBConnection {
      */
     public function get_user_cart($customer_id, $ip_address) {
         try {
+            $filter = $this->getCartFilter((int)$customer_id, $ip_address);
+
             $stmt = $this->pdo->prepare("
-                SELECT c.id as cart_id, c.p_id, c.qty, 
-                       p.id as product_id, p.title, p.price, p.image_path, p.description
+                SELECT c.id AS cart_id, c.p_id, c.qty
                 FROM cart c
-                JOIN product p ON c.p_id = p.id
-                WHERE c.c_id = :cid AND c.ip_add = :ip
+                WHERE {$filter['clause']}
                 ORDER BY c.id DESC
             ");
-            
-            $stmt->execute([
-                ':cid' => $customer_id,
-                ':ip' => $ip_address
-            ]);
-            
+            $stmt->execute($filter['params']);
             $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Format items for easier use
+            // Format items for easier use and clean up orphaned records
             $formatted_items = [];
             foreach ($items as $item) {
+                $product = $this->getProductDetails((int)$item['p_id']);
+
+                if (!$product) {
+                    // Product no longer exists; remove from cart
+                    $this->remove_from_cart($item['cart_id']);
+                    continue;
+                }
+
                 $formatted_items[] = [
                     'cart_id' => $item['cart_id'],
-                    'product_id' => $item['product_id'],
-                    'title' => $item['title'],
-                    'price' => (float)$item['price'],
+                    'product_id' => $product['product_id'],
+                    'title' => $product['title'],
+                    'price' => $product['price'],
                     'quantity' => (int)$item['qty'],
-                    'image_path' => $item['image_path'] ?? 'assets/images/placeholder.jpg',
-                    'subtotal' => (float)$item['price'] * (int)$item['qty']
+                    'image_path' => $product['image_path'] ?? 'assets/images/placeholder.jpg',
+                    'description' => $product['description'],
+                    'subtotal' => $product['price'] * (int)$item['qty']
                 ];
             }
             
@@ -145,11 +213,9 @@ class Cart extends DBConnection {
      */
     public function empty_cart($customer_id, $ip_address) {
         try {
-            $stmt = $this->pdo->prepare("DELETE FROM cart WHERE c_id = :cid AND ip_add = :ip");
-            $result = $stmt->execute([
-                ':cid' => $customer_id,
-                ':ip' => $ip_address
-            ]);
+            $filter = $this->getCartFilter((int)$customer_id, $ip_address, 'cart');
+            $stmt = $this->pdo->prepare("DELETE FROM cart WHERE {$filter['clause']}");
+            $result = $stmt->execute($filter['params']);
             
             if ($result) {
                 return ['success' => true, 'message' => 'Cart emptied successfully'];
@@ -167,12 +233,14 @@ class Cart extends DBConnection {
      */
     public function check_product_in_cart($product_id, $customer_id, $ip_address) {
         try {
-            $stmt = $this->pdo->prepare("SELECT * FROM cart WHERE p_id = :pid AND c_id = :cid AND ip_add = :ip LIMIT 1");
-            $stmt->execute([
-                ':pid' => $product_id,
-                ':cid' => $customer_id,
-                ':ip' => $ip_address
-            ]);
+            $filter = $this->getCartFilter((int)$customer_id, $ip_address);
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM cart 
+                WHERE p_id = :pid AND {$filter['clause']} 
+                LIMIT 1
+            ");
+            $params = array_merge([':pid' => $product_id], $filter['params']);
+            $stmt->execute($params);
             
             return $stmt->fetch(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
@@ -186,13 +254,15 @@ class Cart extends DBConnection {
      */
     public function get_cart_count($customer_id, $ip_address) {
         try {
-            $stmt = $this->pdo->prepare("SELECT SUM(qty) as total_qty FROM cart WHERE c_id = :cid AND ip_add = :ip");
-            $stmt->execute([
-                ':cid' => $customer_id,
-                ':ip' => $ip_address
-            ]);
-            
+            $filter = $this->getCartFilter((int)$customer_id, $ip_address);
+            $stmt = $this->pdo->prepare("
+                SELECT SUM(qty) as total_qty
+                FROM cart
+                WHERE {$filter['clause']}
+            ");
+            $stmt->execute($filter['params']);
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
             return (int)($result['total_qty'] ?? 0);
         } catch (PDOException $e) {
             error_log("Get cart count error: " . $e->getMessage());
@@ -205,20 +275,17 @@ class Cart extends DBConnection {
      */
     public function get_cart_total($customer_id, $ip_address) {
         try {
-            $stmt = $this->pdo->prepare("
-                SELECT SUM(p.price * c.qty) as total
-                FROM cart c
-                JOIN product p ON c.p_id = p.id
-                WHERE c.c_id = :cid AND c.ip_add = :ip
-            ");
-            
-            $stmt->execute([
-                ':cid' => $customer_id,
-                ':ip' => $ip_address
-            ]);
-            
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            return (float)($result['total'] ?? 0);
+            $cart_items = $this->get_user_cart($customer_id, $ip_address);
+            if (!$cart_items['success']) {
+                return 0;
+            }
+
+            $total = 0;
+            foreach ($cart_items['items'] as $item) {
+                $total += $item['price'] * $item['quantity'];
+            }
+
+            return $total;
         } catch (PDOException $e) {
             error_log("Get cart total error: " . $e->getMessage());
             return 0;
